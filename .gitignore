@@ -7,6 +7,5 @@ checkpoints/
 outputs/
 data/
 logs/
-submissions/
 .DS_Store
 *.swp
