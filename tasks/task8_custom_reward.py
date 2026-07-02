@@ -65,11 +65,47 @@ def reward_score(
     repetition penalty, length-cap penalty, prompt-relevance, blending
     with your RM).
     """
-    # <YOUR CODE HERE>
-    raise NotImplementedError(
-        "Task 8: design your reward in tasks/task8_custom_reward.py.\n"
-        "Run with: TOXIC_REWARD=custom:tasks.task8_custom_reward"
-    )
+    from detoxify import Detoxify
+    import math
+
+    _detox = Detoxify("original")
+    raw = _detox.predict(list(texts))
+    tox_scores = raw["toxicity"] if isinstance(raw["toxicity"], list) else [raw["toxicity"]]
+
+    rewards = []
+    for i, (text, tox) in enumerate(zip(texts, tox_scores)):
+        # Saturating detox: benign floor — once clearly non-toxic, no extra incentive
+        detox_reward = min(1.0 - float(tox), 0.8)
+
+        # Trigram repetition penalty
+        words = text.lower().split()
+        if len(words) >= 3:
+            trigrams = [tuple(words[j:j+3]) for j in range(len(words) - 2)]
+            unique_ratio = len(set(trigrams)) / len(trigrams)
+        else:
+            unique_ratio = 1.0
+        rep_penalty = 1.0 - unique_ratio  # 0 = no repeats, 1 = all repeats
+
+        # Prompt-relevance: bag-of-words overlap with prompt (if available)
+        if prompts is not None:
+            prompt_words = set(prompts[i].lower().split())
+            response_words = set(words)
+            if prompt_words:
+                overlap = len(prompt_words & response_words) / len(prompt_words)
+                # Penalise pure echo (overlap > 0.8) and reward moderate relevance
+                if overlap > 0.8:
+                    relevance = 0.3  # penalise trivial echoing
+                else:
+                    relevance = min(overlap * 2, 0.5)
+            else:
+                relevance = 0.0
+        else:
+            relevance = 0.0
+
+        reward = detox_reward - 0.3 * rep_penalty + 0.2 * relevance
+        rewards.append(float(reward))
+
+    return rewards
 
 
 # Tag the function so the verl dispatcher knows whether to pass prompts.
